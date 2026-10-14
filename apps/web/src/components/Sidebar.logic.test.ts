@@ -947,18 +947,27 @@ describe("resolveSidebarCompactRowState", () => {
         number: 4560,
         url: "https://github.com/getmicdrop/frontend/pull/4560",
         checks: { passed: 3, total: 5 },
+        failedChecks: 0,
       },
     });
-    // Before the first read there is no tally to show, and once the gate passes the watch
-    // only listens for comments, so it is no longer CI.
+    // Without a read gate (no checks yet, or a repository without CI) nothing says CI runs.
     const unread = resolve({
       status: "waiting",
       thread: { pullRequests: [link(watch({ gateChecks: undefined }))] },
     });
-    expect(unread?.watchedPullRequest?.checks).toBeNull();
+    expect(unread).toMatchObject({ word: "Waiting", watchedPullRequest: { checks: null } });
+    // A failed check was already reported to the agent; the row counts it instead.
+    const failed = resolve({
+      status: "waiting",
+      thread: { pullRequests: [link(watch({ failedChecks: ["build", "lint"] }))] },
+    });
+    expect(failed).toMatchObject({ word: "Waiting", watchedPullRequest: { failedChecks: 2 } });
+    // Once the gate passes the watch only listens for comments, so it is no longer CI.
     const passed = resolve({
       status: "waiting",
-      thread: { pullRequests: [link(watch({ passed: true }))] },
+      thread: {
+        pullRequests: [link(watch({ passed: true, gateChecks: { passed: 5, total: 5 } }))],
+      },
     });
     expect(passed?.word).toBe("Waiting");
     // An unwatched or dismissed link is not something the thread waits on.

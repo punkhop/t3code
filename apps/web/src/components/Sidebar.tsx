@@ -2017,7 +2017,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       status={pr?.number === watchedPullRequest.number ? prStatus : null}
       wording="words"
       onOpenList={handlePrListClick}
-      onOpenPullRequest={handlePrClick}
+      onOpenPullRequest={(event) => handlePrClick(event, watchedPullRequest.url)}
     />
   ) : prBadgeShape?.kind === "stack" || pr || currentLinkedPr ? (
     <ThreadPullRequestBadgeControl
@@ -2102,7 +2102,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             <span className="inline-flex shrink-0 items-center gap-1">{compactPrBadge}</span>
           </>
         ) : null}
-        {watchedPullRequest?.checks ? (
+        {watchedPullRequest !== null && watchedPullRequest.failedChecks > 0 ? (
+          <>
+            {compactSeparator}
+            <span className="min-w-0 truncate text-error tabular-nums">
+              {watchedPullRequest.failedChecks} failed
+            </span>
+          </>
+        ) : watchedPullRequest?.checks ? (
           <>
             {compactSeparator}
             <span className="min-w-0 truncate tabular-nums">
@@ -2125,7 +2132,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         </span>
       ) : null}
       {isRemote && props.environmentLabel !== null ? (
-        <span className="whitespace-nowrap text-muted-foreground/70">{props.environmentLabel}</span>
+        <span className="max-w-24 truncate whitespace-nowrap text-muted-foreground/70">
+          {props.environmentLabel}
+        </span>
       ) : null}
     </div>
   ) : null;
@@ -2182,6 +2191,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               {pinIndicator}
               {/* Compact rows keep line three for the state, so the provider
                   glyph, when the roster mixes providers, sits by the age. */}
+              {props.compact ? terminalStatusIcon : null}
               {props.compact && props.showProvider ? (
                 <span aria-hidden className="pointer-events-none inline-flex shrink-0 items-center">
                   <SidebarProviderStack
@@ -2319,7 +2329,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                           <TooltipPopup side="top">Wake thread now</TooltipPopup>
                         </Tooltip>
                       ) : null}
-                      {showSnoozeButton ? (
+                      {/* A snoozed card only wakes: its sweep follows the row's action. */}
+                      {showSnoozeButton && variantAction !== "unsnooze" ? (
                         <SnoozeMenuButton
                           open={snoozeMenuOpen}
                           onOpenChange={setSnoozeMenuOpen}
@@ -2327,7 +2338,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                           timestampFormat={props.timestampFormat}
                         />
                       ) : null}
-                      {props.settlementSupported ? (
+                      {props.settlementSupported && variantAction !== "unsnooze" ? (
                         <Tooltip>
                           <TooltipTrigger
                             render={

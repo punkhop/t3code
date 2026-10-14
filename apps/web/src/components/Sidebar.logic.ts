@@ -1072,6 +1072,8 @@ export interface SidebarCompactRowState {
     readonly number: number;
     readonly url: string;
     readonly checks: { readonly passed: number; readonly total: number } | null;
+    /** Checks on the head commit that failed; the agent was already told about them. */
+    readonly failedChecks: number;
   } | null;
 }
 
@@ -1131,15 +1133,22 @@ export function resolveSidebarCompactRowState(input: {
       (link) => link.watch !== undefined && link.source !== "stack-dismissed",
     );
     if (watched?.watch !== undefined) {
+      const { gateChecks, failedChecks } = watched.watch;
+      // CI is what the thread waits on only while gate checks still run: not
+      // once they passed or one failed, and not on a repository without checks.
+      const ciRunning =
+        gateChecks !== undefined &&
+        gateChecks.passed < gateChecks.total &&
+        failedChecks.length === 0;
       return {
         kind: "waiting",
-        // Once the gate has passed the watch only listens for comments and conflicts.
-        word: watched.watch.passed ? "Waiting" : "Waiting on CI",
+        word: ciRunning ? "Waiting on CI" : "Waiting",
         cause: null,
         watchedPullRequest: {
           number: watched.number,
           url: watched.url,
-          checks: watched.watch.gateChecks ?? null,
+          checks: gateChecks ?? null,
+          failedChecks: failedChecks.length,
         },
       };
     }
