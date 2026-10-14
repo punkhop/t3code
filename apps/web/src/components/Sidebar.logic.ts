@@ -1055,7 +1055,9 @@ export type SidebarCompactStateKind =
   | "limited"
   | "failed"
   | "woke"
-  | "done";
+  | "done"
+  | "stopped"
+  | "reverted";
 
 /**
  * Line three of a compact row: a state word and its cause. Every part is read from app
@@ -1067,6 +1069,8 @@ export interface SidebarCompactRowState {
   readonly kind: SidebarCompactStateKind;
   readonly word: string;
   readonly cause: string | null;
+  /** A finished run already seen: drawn quiet so unread work stands out. */
+  readonly muted: boolean;
   /** The pull request the thread waits on, with its passing gate tally when one was read. */
   readonly watchedPullRequest: {
     readonly number: number;
@@ -1103,7 +1107,7 @@ function describeBackgroundWork(
 export function resolveSidebarCompactRowState(input: {
   readonly thread: Pick<
     SidebarThreadSummary,
-    "goal" | "pendingBackgroundTasks" | "pullRequests" | "runtime"
+    "goal" | "pendingBackgroundTasks" | "pullRequests" | "runtime" | "latestRun"
   >;
   readonly status: SidebarThreadStatus;
   readonly isUnread: boolean;
@@ -1117,7 +1121,8 @@ export function resolveSidebarCompactRowState(input: {
     kind: SidebarCompactStateKind,
     word: string,
     cause: string | null = null,
-  ): SidebarCompactRowState => ({ kind, word, cause, watchedPullRequest: null });
+    muted = false,
+  ): SidebarCompactRowState => ({ kind, word, cause, muted, watchedPullRequest: null });
   const { thread, status } = input;
   if (status === "approval") return state("needs-you", "Needs you", "approval");
   if (status === "input") return state("needs-you", "Needs you", "question");
@@ -1126,6 +1131,8 @@ export function resolveSidebarCompactRowState(input: {
     return state("snoozed", "Snoozed", until === "" ? null : `until ${until}`);
   }
   if (status === "working") {
+    // A queued run has not started; its clock would count time spent in line.
+    if (thread.runtime?.status === "queued") return state("working", "Queued");
     return state("working", thread.goal?.status === "active" ? "Goal" : "Working");
   }
   if (status === "waiting") {
@@ -1144,6 +1151,7 @@ export function resolveSidebarCompactRowState(input: {
         kind: "waiting",
         word: ciRunning ? "Waiting on CI" : "Waiting",
         cause: null,
+        muted: false,
         watchedPullRequest: {
           number: watched.number,
           url: watched.url,
@@ -1164,7 +1172,19 @@ export function resolveSidebarCompactRowState(input: {
   }
   if (status === "failed") return state("failed", "Failed");
   if (input.isWoke) return state("woke", "Woke");
-  return input.isUnread ? state("done", "Done") : null;
+  // The latest run's own outcome, in the words the thread view uses for it. A stopped run
+  // also has a finish time, so "unread" alone would call it Done.
+  switch (thread.latestRun?.status) {
+    case "completed":
+      return state("done", "Done", null, !input.isUnread);
+    case "cancelled":
+    case "interrupted":
+      return state("stopped", "Stopped", null, !input.isUnread);
+    case "rolled_back":
+      return state("reverted", "Reverted", null, !input.isUnread);
+    default:
+      return null;
+  }
 }
 
 /**

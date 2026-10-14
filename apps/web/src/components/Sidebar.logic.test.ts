@@ -899,7 +899,9 @@ describe("resolveSidebarCompactRowState", () => {
     pendingBackgroundTasks: [],
     pullRequests: [],
     runtime: null,
+    latestRun: null,
   };
+  const run = (status: string) => ({ latestRun: { status } });
   const resolve = (
     overrides: Partial<Omit<CompactInput, "thread">> & { thread?: Record<string, unknown> },
   ) =>
@@ -943,6 +945,7 @@ describe("resolveSidebarCompactRowState", () => {
       kind: "waiting",
       word: "Waiting on CI",
       cause: null,
+      muted: false,
       watchedPullRequest: {
         number: 4560,
         url: "https://github.com/getmicdrop/frontend/pull/4560",
@@ -1021,8 +1024,26 @@ describe("resolveSidebarCompactRowState", () => {
     expect(resolve({ status: "limited" })).toMatchObject({ kind: "limited", cause: null });
     expect(resolve({ status: "failed", isUnread: true })?.kind).toBe("failed");
     expect(resolve({ isWoke: true, isUnread: true })?.kind).toBe("woke");
-    expect(resolve({ isUnread: true })).toMatchObject({ kind: "done", word: "Done" });
-    // A read, idle thread has no state to report rather than a guessed one.
+    expect(resolve({ status: "working", thread: { runtime: { status: "queued" } } })?.word).toBe(
+      "Queued",
+    );
+  });
+
+  it("names the latest run's outcome, loud while unread and quiet once seen", () => {
+    expect(resolve({ isUnread: true, thread: run("completed") })).toMatchObject({
+      kind: "done",
+      word: "Done",
+      muted: false,
+    });
+    expect(resolve({ thread: run("completed") })).toMatchObject({ word: "Done", muted: true });
+    // A stopped run has a finish time too; it must never read as Done.
+    expect(resolve({ isUnread: true, thread: run("interrupted") })).toMatchObject({
+      kind: "stopped",
+      word: "Stopped",
+    });
+    expect(resolve({ thread: run("cancelled") })?.word).toBe("Stopped");
+    expect(resolve({ thread: run("rolled_back") })?.word).toBe("Reverted");
+    // A thread that never ran has no outcome to report rather than a guessed one.
     expect(resolve({})).toBeNull();
   });
 });

@@ -1123,6 +1123,8 @@ const COMPACT_STATE_GLYPH: Record<SidebarCompactStateKind, string> = {
   failed: "✗",
   woke: "",
   done: "✓",
+  stopped: "■",
+  reverted: "↺",
 };
 const COMPACT_STATE_TONE: Record<SidebarCompactStateKind, string> = {
   "needs-you": "text-warning-foreground",
@@ -1133,6 +1135,8 @@ const COMPACT_STATE_TONE: Record<SidebarCompactStateKind, string> = {
   failed: "text-error",
   woke: "text-warning",
   done: "text-success",
+  stopped: "text-muted-foreground",
+  reverted: "text-muted-foreground",
 };
 
 const SidebarThreadRow = memo(function SidebarThreadRow(props: {
@@ -2070,9 +2074,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             className={cn(
               "inline-flex shrink-0 items-center gap-1 font-medium",
               // Approval and input keep their own hues from the status above.
-              compactState.kind === "needs-you"
-                ? (topStatus?.className ?? COMPACT_STATE_TONE["needs-you"])
-                : COMPACT_STATE_TONE[compactState.kind],
+              compactState.muted
+                ? "font-normal text-muted-foreground"
+                : compactState.kind === "needs-you"
+                  ? (topStatus?.className ?? COMPACT_STATE_TONE["needs-you"])
+                  : COMPACT_STATE_TONE[compactState.kind],
             )}
           >
             <span aria-hidden className="inline-block w-3 text-center">
