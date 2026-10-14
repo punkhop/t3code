@@ -1175,7 +1175,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   compact: boolean;
   launcherTitle: string | null;
   launchedCount: number;
-  showProvider: boolean;
   isActive: boolean;
   openPullRequestsInRightPanel: boolean;
   jumpLabel: string | null;
@@ -2189,17 +2188,6 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 <span className="flex-1" />
               )}
               {pinIndicator}
-              {/* Compact rows keep line three for the state, so the provider
-                  glyph, when the roster mixes providers, sits by the age. */}
-              {props.compact ? terminalStatusIcon : null}
-              {props.compact && props.showProvider ? (
-                <span aria-hidden className="pointer-events-none inline-flex shrink-0 items-center">
-                  <SidebarProviderStack
-                    thread={thread}
-                    providerEntryByInstanceId={props.providerEntryByInstanceId}
-                  />
-                </span>
-              ) : null}
               {/* The visible state owns this slot's width: status at rest,
                   actions on hover/keyboard focus or while the popover is open. Keeping
                   the hidden state out of flow lets the project label reclaim
@@ -3178,19 +3166,6 @@ export default function Sidebar() {
     () => (compactRows ? buildSidebarLaunchIndex(threads) : null),
     [compactRows, threads],
   );
-  // Compact rows draw the provider glyph only when the roster mixes providers;
-  // with one provider everywhere it tells rows nothing.
-  const compactRowsShowProvider = useMemo(() => {
-    if (!compactRows) return true;
-    const drivers = new Set<string>();
-    for (const thread of [...pinnedThreads, ...activeThreads, ...workingThreads]) {
-      const instanceId = thread.runtime?.providerInstanceId ?? thread.modelSelection.instanceId;
-      const entry = providerEntriesByEnvironment.get(thread.environmentId)?.get(instanceId);
-      drivers.add(entry?.driverKind ?? instanceId);
-      if (drivers.size > 1) return true;
-    }
-    return false;
-  }, [activeThreads, compactRows, pinnedThreads, providerEntriesByEnvironment, workingThreads]);
 
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
   const [threadSearchQuery, setThreadSearchQuery] = useState("");
@@ -5642,7 +5617,6 @@ export default function Sidebar() {
                                 `${thread.environmentId}:${thread.id}`,
                               ) ?? 0
                             }
-                            showProvider={compactRowsShowProvider}
                             isActive={routeThreadKey === threadKey}
                             openPullRequestsInRightPanel={routeThreadRef !== null}
                             jumpLabel={

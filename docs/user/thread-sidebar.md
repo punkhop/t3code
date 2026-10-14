@@ -132,7 +132,8 @@ request and how many of its required checks have passed, **Needs you** with whet
 question or an approval, how long it has been working, and when a snoozed thread comes back. T3
 Code works this out from the thread itself, never from anything the agent writes. The project
 shows by its short name, and a thread an agent started with `t3_thread_launch` or `create_threads`
-names the thread that launched it, while that thread shows how many workers it started. Snoozed
+names the thread that launched it, while that thread shows how many of its workers are still
+working, waiting, or need you. Snoozed
 threads keep their full row while this is on. Each device keeps its own choice.
 
 ## Settle finished work

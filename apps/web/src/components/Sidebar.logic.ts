@@ -1169,11 +1169,23 @@ export function resolveSidebarCompactRowState(input: {
 
 /**
  * Who launched whom among the listed threads, keyed by `environmentId:threadId`: the
- * launcher's title for each launched thread, and how many threads each launcher started.
+ * launcher's title for each launched thread, and how many of its workers are still in flight
+ * (working, waiting, asking, or failed). A worker that finished cleanly or was settled no
+ * longer counts.
  */
 export function buildSidebarLaunchIndex(
   threads: ReadonlyArray<
-    Pick<SidebarThreadSummary, "environmentId" | "id" | "title" | "launchedByThreadId">
+    Pick<
+      SidebarThreadSummary,
+      | "environmentId"
+      | "id"
+      | "title"
+      | "launchedByThreadId"
+      | "settledOverride"
+      | "hasPendingApprovals"
+      | "hasPendingUserInput"
+      | "runtime"
+    >
   >,
 ): {
   readonly launcherTitleByKey: ReadonlyMap<string, string>;
@@ -1190,7 +1202,11 @@ export function buildSidebarLaunchIndex(
     const launcherTitle = titleByKey.get(launcherKey);
     if (launcherTitle === undefined) continue;
     launcherTitleByKey.set(`${thread.environmentId}:${thread.id}`, launcherTitle);
-    launchedCountByKey.set(launcherKey, (launchedCountByKey.get(launcherKey) ?? 0) + 1);
+    const inFlight =
+      thread.settledOverride !== "settled" && resolveSidebarThreadStatus(thread) !== "ready";
+    if (inFlight) {
+      launchedCountByKey.set(launcherKey, (launchedCountByKey.get(launcherKey) ?? 0) + 1);
+    }
   }
   return { launcherTitleByKey, launchedCountByKey };
 }

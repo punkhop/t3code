@@ -1028,11 +1028,44 @@ describe("resolveSidebarCompactRowState", () => {
 });
 
 describe("buildSidebarLaunchIndex", () => {
-  const row = (id: string, title: string, launchedByThreadId: string | null = null) => ({
+  const runtime = (status: "running" | "idle" | "failed" | "completed") => ({
+    status,
+    activeRunId: null,
+    providerInstanceId: ProviderInstanceId.make("codex"),
+    providerName: "Codex",
+    lastError: null,
+    updatedAt: "2026-10-13T10:00:00.000Z",
+  });
+  const row = (
+    id: string,
+    title: string,
+    launchedByThreadId: string | null = null,
+    overrides: Partial<Parameters<typeof buildSidebarLaunchIndex>[0][number]> = {},
+  ) => ({
     environmentId: EnvironmentId.make("env"),
     id: ThreadId.make(id),
     title,
     launchedByThreadId: launchedByThreadId === null ? null : ThreadId.make(launchedByThreadId),
+    settledOverride: null,
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    runtime: runtime("running"),
+    ...overrides,
+  });
+
+  it("counts only workers still in flight; finished and settled ones drop out", () => {
+    const index = buildSidebarLaunchIndex([
+      row("lead", "Pass"),
+      row("working", "W1", "lead"),
+      row("waiting", "W2", "lead", { runtime: runtime("idle") }),
+      row("asking", "W3", "lead", { runtime: null, hasPendingUserInput: true }),
+      row("failed", "W4", "lead", { runtime: runtime("failed") }),
+      row("finished", "W5", "lead", { runtime: runtime("completed") }),
+      row("settled", "W6", "lead", { settledOverride: "settled" }),
+    ]);
+    expect(index.launchedCountByKey.get("env:lead")).toBe(4);
+    // Every launched thread still names its launcher, finished or not.
+    expect(index.launcherTitleByKey.get("env:finished")).toBe("Pass");
   });
 
   it("names each launcher and counts what it launched", () => {
