@@ -114,6 +114,11 @@ export const ThreadPullRequestWatch = Schema.Struct({
   passedChecks: Schema.Array(TrimmedNonEmptyString).pipe(
     Schema.withDecodingDefault(Effect.succeed([])),
   ),
+  /**
+   * The passing gate at the last pass: how many of its checks have finished without failing.
+   * Absent until a pass reads checks, and on watches saved before this field existed.
+   */
+  gateChecks: Schema.optional(Schema.Struct({ passed: NonNegativeInt, total: NonNegativeInt })),
   /** Remarks from others created up to this host time were reported. */
   remarksThrough: IsoDateTime,
   /** Remarks created exactly at `remarksThrough` that were reported, so a late one still counts. */

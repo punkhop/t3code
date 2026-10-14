@@ -153,6 +153,35 @@ describe("evaluatePullRequestWatch", () => {
     assert.deepEqual(saved.next.passedChecks, ["test"]);
   });
 
+  it("tallies the passing gate for the sidebar, and forgets it when the head moves", () => {
+    const required = (name: string, status: PullRequestCheck["status"]) => ({
+      ...check(name, status),
+      required: true,
+    });
+    const gated = detail({
+      checks: [
+        required("lint", "success"),
+        required("test", "pending"),
+        required("build", "failure"),
+        check("CodeRabbit", "success"),
+      ],
+    });
+    const first = evaluatePullRequestWatch(watch(), gated, noRemarks);
+    // Advisory checks stay out of the tally while the host marks some required.
+    assert.deepEqual(first.next.gateChecks, { passed: 1, total: 3 });
+    // No checks read keeps the last tally; a new head clears it.
+    const empty = evaluatePullRequestWatch(first.next, detail({ checks: [] }), noRemarks);
+    assert.deepEqual(empty.next.gateChecks, { passed: 1, total: 3 });
+    const pushed = detail({ headSha: "bbbbbbbbbb", checks: [] });
+    assert.equal(
+      evaluatePullRequestWatch(first.next, pushed, noRemarks).next.gateChecks,
+      undefined,
+    );
+    // Without required checks every check is the gate.
+    const open = evaluatePullRequestWatch(watch(), detail(), noRemarks);
+    assert.deepEqual(open.next.gateChecks, { passed: 1, total: 2 });
+  });
+
   it("keeps remarks for a later pass when the conversation was not read whole", () => {
     const comments = [remark("reviewer", "2026-10-02T12:06:00Z")];
     const partial = evaluatePullRequestWatch(watch(), detail(), null);

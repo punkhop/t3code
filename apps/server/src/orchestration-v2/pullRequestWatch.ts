@@ -54,6 +54,7 @@ export function evaluatePullRequestWatch(
   let failedChecks = headMoved ? [] : watch.failedChecks;
   let passed = headMoved ? false : watch.passed;
   let passedChecks = headMoved ? [] : watch.passedChecks;
+  let gateChecks = headMoved ? undefined : watch.gateChecks;
   if (detail.checks.length > 0) {
     const failed = detail.checks.filter(isFailedCheck);
     const newlyFailed = failed.filter((check) => !failedChecks.includes(check.name));
@@ -75,6 +76,10 @@ export function evaluatePullRequestWatch(
     }
     passed = passedNow;
     passedChecks = passedNow ? gateNames : [];
+    gateChecks = {
+      passed: gate.filter((check) => check.status !== "pending" && !isFailedCheck(check)).length,
+      total: gate.length,
+    };
   }
 
   const own = (detail.viewer ?? detail.author?.login)?.toLowerCase();
@@ -116,6 +121,7 @@ export function evaluatePullRequestWatch(
       failedChecks,
       passed,
       passedChecks,
+      ...(gateChecks === undefined ? {} : { gateChecks }),
       remarksThrough,
       remarkIds,
       conflicting,
