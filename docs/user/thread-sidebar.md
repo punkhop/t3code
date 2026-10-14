@@ -124,6 +124,18 @@ device keeps its own choice.
 While this is on, the active list is ordered by when each thread last came back to you, so you
 cannot drag or move threads within it. Your saved order returns when you turn it off.
 
+### Show what each thread waits on
+
+Turn on **Settings → General → Compact rows** on web and desktop to give each thread's last line
+to its state and what caused it, in place of the branch: **Waiting on CI** with the watched pull
+request and how many of its required checks have passed, **Needs you** with whether it is a
+question or an approval, how long it has been working, and when a snoozed thread comes back. T3
+Code works this out from the thread itself, never from anything the agent writes. The project
+shows by its short name, and a thread an agent started with `t3_thread_launch` or `create_threads`
+names the thread that launched it, while that thread shows how many of its workers are still
+working, waiting, or need you. Snoozed
+threads keep their full row while this is on. Each device keeps its own choice.
+
 ## Settle finished work
 
 Choose **Settle thread** from its menu to move finished work out of the active list

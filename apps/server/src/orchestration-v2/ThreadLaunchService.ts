@@ -95,6 +95,8 @@ export interface ThreadLaunchInput {
   };
   readonly createdBy: OrchestrationV2Actor;
   readonly creationSource: OrchestrationV2CreationSource;
+  /** The thread whose agent launched this one; recorded on a newly created thread. */
+  readonly launchedByThreadId?: ThreadId;
 }
 
 /** What workspace preparation reads from a launch; a retry rebuilds it from the run. */
@@ -897,6 +899,9 @@ const make = Effect.gen(function* () {
                 ...(input.importedNativeThread === undefined
                   ? {}
                   : { importedNativeThread: input.importedNativeThread }),
+                ...(input.launchedByThreadId === undefined
+                  ? {}
+                  : { launchedByThreadId: input.launchedByThreadId }),
                 createdBy: input.createdBy,
                 creationSource: input.creationSource,
               });

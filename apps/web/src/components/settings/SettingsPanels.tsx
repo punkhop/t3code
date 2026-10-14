@@ -578,6 +578,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled
         ? ["Working section"]
         : []),
+      ...(settings.sidebarCompactRows !== DEFAULT_UNIFIED_SETTINGS.sidebarCompactRows
+        ? ["Compact rows"]
+        : []),
       ...(settings.sidebarAutoSettleAfterDays !==
       DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays
         ? ["Auto-settle inactive threads"]
@@ -714,6 +717,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.sidebarProjectGroupingMode,
       settings.sidebarProjectSortOrder,
       settings.sidebarWorkingShelfEnabled,
+      settings.sidebarCompactRows,
       settings.sidebarThreadPreviewCount,
       settings.showSkillsInSlashMenu,
       settings.timestampFormat,
@@ -814,6 +818,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       sidebarProjectGroupingMode: DEFAULT_UNIFIED_SETTINGS.sidebarProjectGroupingMode,
       sidebarProjectSortOrder: DEFAULT_UNIFIED_SETTINGS.sidebarProjectSortOrder,
       sidebarWorkingShelfEnabled: DEFAULT_UNIFIED_SETTINGS.sidebarWorkingShelfEnabled,
+      sidebarCompactRows: DEFAULT_UNIFIED_SETTINGS.sidebarCompactRows,
       sidebarAutoSettleAfterDays: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleAfterDays,
       sidebarAutoSettleOnMerge: DEFAULT_UNIFIED_SETTINGS.sidebarAutoSettleOnMerge,
       autoResumeLimitedThreads: DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads,
@@ -2300,6 +2305,31 @@ export function GeneralSettingsPanel() {
                 });
               }}
               aria-label="Project grouping"
+            />
+          }
+        />
+        <SettingsRow
+          {...searchableSetting("compact-rows")}
+          description="Name each thread's project by its short name and show what the thread is waiting on instead of its branch."
+          resetAction={
+            settings.sidebarCompactRows !== DEFAULT_UNIFIED_SETTINGS.sidebarCompactRows ? (
+              <SettingResetButton
+                label="compact rows"
+                onClick={() =>
+                  updateSettings({
+                    sidebarCompactRows: DEFAULT_UNIFIED_SETTINGS.sidebarCompactRows,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.sidebarCompactRows}
+              onCheckedChange={(checked) =>
+                updateSettings({ sidebarCompactRows: Boolean(checked) })
+              }
+              aria-label="Compact rows"
             />
           }
         />
