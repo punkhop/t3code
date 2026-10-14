@@ -800,6 +800,31 @@ describe("resolveThreadPullRequestBadgePresentation", () => {
     },
   );
 
+  it("spells the badge out for compact sidebar rows", () => {
+    const words = (badge: Parameters<typeof resolveThreadPullRequestBadgePresentation>[0]) =>
+      resolveThreadPullRequestBadgePresentation({ ...badge, wording: "words" })?.text;
+    expect(words({ badge: null, number: 4560, url, status: null })).toBe("PR 4560");
+    expect(
+      words({
+        badge: { kind: "pull-request", others: 1, state: "open" },
+        number: 4560,
+        url,
+        status: null,
+      }),
+    ).toBe("2 PRs open");
+    expect(
+      words({
+        badge: { kind: "pull-request", others: 2, state: "merged" },
+        number: 4560,
+        url,
+        status: null,
+      }),
+    ).toBe("3 PRs merged");
+    expect(words({ badge: { kind: "stack", layers: 3, state: "open" }, status: null })).toBe(
+      "3 PRs stacked",
+    );
+  });
+
   it("omits the control when neither a stack nor a linked identity can be shown", () => {
     expect(resolveThreadPullRequestBadgePresentation({ badge: null, status: null })).toBeNull();
   });

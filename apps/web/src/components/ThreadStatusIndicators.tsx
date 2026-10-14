@@ -175,11 +175,14 @@ export function resolveThreadPullRequestBadgePresentation({
   number,
   url,
   status,
+  wording = "count",
 }: {
   readonly badge: ThreadPullRequestBadge | null;
   readonly number?: number | undefined;
   readonly url?: string | undefined;
   readonly status: PrStatusIndicator | null;
+  /** "words" spells the text out ("PR 4560", "2 PRs open") for rows with room to read it. */
+  readonly wording?: "count" | "words" | undefined;
 }): ThreadPullRequestBadgePresentation | null {
   // The badge already folds every visible link into one state, draft included, so both the
   // stack and the linked count index the shared table directly rather than the single-PR resolver.
@@ -189,7 +192,7 @@ export function resolveThreadPullRequestBadgePresentation({
       Icon: PullRequestGlyph.stack,
       toneClassName: aggregate.toneClassName,
       label: `Stack of ${badge.layers} pull requests, ${aggregate.label.toLowerCase()}`,
-      text: badge.layers,
+      text: wording === "words" ? `${badge.layers} PRs stacked` : badge.layers,
     };
   }
   if (number === undefined || url === undefined) return null;
@@ -202,14 +205,17 @@ export function resolveThreadPullRequestBadgePresentation({
       Icon: aggregate.Icon,
       toneClassName: aggregate.toneClassName,
       label: `${tooltip}, and ${badge.others} more linked; overall ${aggregate.label.toLowerCase()}`,
-      text: `+${badge.others + 1}`,
+      text:
+        wording === "words"
+          ? `${badge.others + 1} PRs ${aggregate.label.toLowerCase()}`
+          : `+${badge.others + 1}`,
     };
   }
   return {
     Icon: status?.Icon ?? PullRequestGlyph.pullRequest,
     toneClassName: status?.colorClass ?? "text-muted-foreground",
     label: tooltip,
-    text: number,
+    text: wording === "words" ? `PR ${number}` : number,
   };
 }
 
@@ -227,6 +233,7 @@ export function ThreadPullRequestBadgeControl({
   number,
   url,
   status,
+  wording,
   onOpenList,
   onOpenPullRequest,
 }: {
@@ -236,10 +243,17 @@ export function ThreadPullRequestBadgeControl({
   number?: number | undefined;
   url?: string | undefined;
   status: PrStatusIndicator | null;
+  wording?: "count" | "words" | undefined;
   onOpenList: () => void;
   onOpenPullRequest: (event: MouseEvent<HTMLElement>, url?: string) => void;
 }) {
-  const presentation = resolveThreadPullRequestBadgePresentation({ badge, number, url, status });
+  const presentation = resolveThreadPullRequestBadgePresentation({
+    badge,
+    number,
+    url,
+    status,
+    wording,
+  });
   if (presentation === null) return null;
   return (
     <PullRequestBadge

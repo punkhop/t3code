@@ -8,6 +8,7 @@ import { AsyncResult } from "effect/reactivity";
 import {
   animateSidebarLayoutChanges,
   archiveSelectedThreadEntries,
+  buildSidebarLaunchIndex,
   buildBulkTitleRegenerationContextMenuItem,
   buildBulkUnpinContextMenuItem,
   buildMultiSelectThreadContextMenuItems,
@@ -30,6 +31,7 @@ import {
   reduceSidebarProjectScopeMenuState,
   resolveAdjacentThreadId,
   resolveProjectStatusIndicator,
+  resolveSidebarCompactRowState,
   resolveSidebarSweepKeys,
   resolveSidebarStageBadgeLabel,
   resolveSidebarThreadSection,
@@ -885,6 +887,165 @@ describe("isContextMenuPointerDown", () => {
         isMac: false,
       }),
     ).toBe(false);
+  });
+});
+
+describe("resolveSidebarCompactRowState", () => {
+  const now = new Date("2026-10-13T15:00:00");
+  type CompactInput = Parameters<typeof resolveSidebarCompactRowState>[0];
+  // Fixtures stay loose: each case sets only the thread fields it is about.
+  const thread: Record<string, unknown> = {
+    goal: null,
+    pendingBackgroundTasks: [],
+    pullRequests: [],
+    runtime: null,
+  };
+  const resolve = (
+    overrides: Partial<Omit<CompactInput, "thread">> & { thread?: Record<string, unknown> },
+  ) =>
+    resolveSidebarCompactRowState({
+      status: "ready",
+      isUnread: false,
+      isWoke: false,
+      snoozedUntil: null,
+      now,
+      timestampFormat: "24-hour",
+      ...overrides,
+      thread: { ...thread, ...overrides.thread } as unknown as CompactInput["thread"],
+    });
+  const link = (watch: Record<string, unknown> | undefined) => ({
+    host: "github.com",
+    repository: "getmicdrop/frontend",
+    number: 4560,
+    url: "https://github.com/getmicdrop/frontend/pull/4560",
+    source: "agent",
+    linkedAt: "2026-10-13T12:00:00.000Z",
+    snapshot: null,
+    stack: null,
+    ...(watch === undefined ? {} : { watch }),
+  });
+  const watch = (overrides: Record<string, unknown> = {}) => ({
+    startedAt: "2026-10-13T12:00:00.000Z",
+    headSha: "abc",
+    failedChecks: [],
+    passed: false,
+    passedChecks: [],
+    gateChecks: { passed: 3, total: 5 },
+    remarksThrough: "2026-10-13T12:00:00.000Z",
+    remarkIds: [],
+    conflicting: false,
+    wakes: 0,
+    ...overrides,
+  });
+
+  it("names what a waiting thread waits on: CI on its watched pull request", () => {
+    expect(resolve({ status: "waiting", thread: { pullRequests: [link(watch())] } })).toEqual({
+      kind: "waiting",
+      word: "Waiting on CI",
+      cause: null,
+      watchedPullRequest: {
+        number: 4560,
+        url: "https://github.com/getmicdrop/frontend/pull/4560",
+        checks: { passed: 3, total: 5 },
+      },
+    });
+    // Before the first read there is no tally to show, and once the gate passes the watch
+    // only listens for comments, so it is no longer CI.
+    const unread = resolve({
+      status: "waiting",
+      thread: { pullRequests: [link(watch({ gateChecks: undefined }))] },
+    });
+    expect(unread?.watchedPullRequest?.checks).toBeNull();
+    const passed = resolve({
+      status: "waiting",
+      thread: { pullRequests: [link(watch({ passed: true }))] },
+    });
+    expect(passed?.word).toBe("Waiting");
+    // An unwatched or dismissed link is not something the thread waits on.
+    expect(
+      resolve({ status: "waiting", thread: { pullRequests: [link(undefined)] } })
+        ?.watchedPullRequest,
+    ).toBeNull();
+  });
+
+  it("counts the background work a waiting thread holds for, never its watches or commands", () => {
+    const tasks = [
+      { taskId: "a", kind: "subagent" },
+      { taskId: "b", kind: "subagent" },
+      { taskId: "c", kind: "monitor" },
+      { taskId: "d", kind: "command" },
+      { taskId: "pull-request-watch:github.com/o/r/1", kind: "monitor" },
+    ];
+    expect(resolve({ status: "waiting", thread: { pendingBackgroundTasks: tasks } })).toMatchObject(
+      { word: "Waiting", cause: "2 subagents, 1 monitor" },
+    );
+    expect(resolve({ status: "waiting" })).toMatchObject({ word: "Waiting", cause: null });
+  });
+
+  it("asks for the user before anything else, naming a question or an approval", () => {
+    expect(resolve({ status: "input", snoozedUntil: "2026-10-13T23:00:00" })).toMatchObject({
+      kind: "needs-you",
+      word: "Needs you",
+      cause: "question",
+    });
+    expect(resolve({ status: "approval" })).toMatchObject({ cause: "approval" });
+  });
+
+  it("tells a snoozed row when it comes back", () => {
+    expect(
+      resolve({ status: "waiting", snoozedUntil: "2026-10-13T23:00:00", isUnread: true }),
+    ).toMatchObject({ kind: "snoozed", word: "Snoozed", cause: "until 23:00" });
+    expect(resolve({ snoozedUntil: "2026-10-14T09:00:00" })?.cause).toBe("until tomorrow 09:00");
+  });
+
+  it("covers working, limited, failed, woke and unread completions", () => {
+    expect(resolve({ status: "working" })).toMatchObject({ kind: "working", word: "Working" });
+    expect(resolve({ status: "working", thread: { goal: { status: "active" } } })?.word).toBe(
+      "Goal",
+    );
+    expect(
+      resolve({
+        status: "limited",
+        thread: { runtime: { usageLimitResetAt: "2026-10-13T18:30:00" } },
+      }),
+    ).toMatchObject({ kind: "limited", cause: "resets 18:30" });
+    expect(resolve({ status: "limited" })).toMatchObject({ kind: "limited", cause: null });
+    expect(resolve({ status: "failed", isUnread: true })?.kind).toBe("failed");
+    expect(resolve({ isWoke: true, isUnread: true })?.kind).toBe("woke");
+    expect(resolve({ isUnread: true })).toMatchObject({ kind: "done", word: "Done" });
+    // A read, idle thread has no state to report rather than a guessed one.
+    expect(resolve({})).toBeNull();
+  });
+});
+
+describe("buildSidebarLaunchIndex", () => {
+  const row = (id: string, title: string, launchedByThreadId: string | null = null) => ({
+    environmentId: EnvironmentId.make("env"),
+    id: ThreadId.make(id),
+    title,
+    launchedByThreadId: launchedByThreadId === null ? null : ThreadId.make(launchedByThreadId),
+  });
+
+  it("names each launcher and counts what it launched", () => {
+    const index = buildSidebarLaunchIndex([
+      row("lead", "Mobile and tablet pass"),
+      row("w1", "Mobile tests in CI", "lead"),
+      row("w2", "Stat tiles on a phone", "lead"),
+      row("solo", "Merch module"),
+    ]);
+    expect(index.launcherTitleByKey.get("env:w1")).toBe("Mobile and tablet pass");
+    expect(index.launchedCountByKey.get("env:lead")).toBe(2);
+    expect(index.launcherTitleByKey.has("env:solo")).toBe(false);
+  });
+
+  it("names nothing when the launcher is not in the list or lives elsewhere", () => {
+    const index = buildSidebarLaunchIndex([
+      row("orphan", "Worker", "deleted-lead"),
+      { ...row("remote", "Worker", "lead"), environmentId: EnvironmentId.make("other") },
+      row("lead", "Lead"),
+    ]);
+    expect(index.launcherTitleByKey.size).toBe(0);
+    expect(index.launchedCountByKey.size).toBe(0);
   });
 });
 

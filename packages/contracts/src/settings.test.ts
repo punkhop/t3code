@@ -638,6 +638,16 @@ describe("ClientSettings sidebar", () => {
     expect(decodeClientSettingsPatch(stored)).toEqual({});
   });
 
+  it("keeps compact rows opt-in, and the retired compact keys do not turn them on", () => {
+    expect(decodeClientSettings({}).sidebarCompactRows).toBe(false);
+    expect(
+      decodeClientSettings({ compactSidebarEnabled: true, sidebarCompactThreadRows: true })
+        .sidebarCompactRows,
+    ).toBe(false);
+    expect(decodeClientSettingsPatch({ sidebarCompactRows: true }).sidebarCompactRows).toBe(true);
+    expect(() => decodeClientSettingsPatch({ sidebarCompactRows: "yes" })).toThrow();
+  });
+
   it("preserves an explicit legacy sidebar opt-in", () => {
     expect(decodeClientSettings({ legacySidebarEnabled: true }).legacySidebarEnabled).toBe(true);
     expect(decodeClientSettingsPatch({ legacySidebarEnabled: true }).legacySidebarEnabled).toBe(

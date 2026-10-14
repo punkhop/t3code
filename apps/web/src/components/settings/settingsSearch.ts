@@ -338,6 +338,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["combine matching repositories environments sidebar"],
   },
   {
+    id: "compact-rows",
+    title: "Compact rows",
+    to: "/settings/general",
+    searchTerms: ["sidebar thread row status waiting ci checks pull request launched parent"],
+  },
+  {
     id: "project-order",
     title: "Project order",
     to: "/settings/general",

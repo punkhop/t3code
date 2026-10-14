@@ -1,5 +1,8 @@
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
-import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
+import {
+  backgroundWorkHoldsCompletion,
+  isPullRequestWatchTask,
+} from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
 import * as React from "react";
 import {
@@ -9,7 +12,11 @@ import {
 import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
-import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
+import type {
+  SidebarProjectSortOrder,
+  SidebarThreadSortOrder,
+  TimestampFormat,
+} from "@t3tools/contracts/settings";
 import type { AsyncResult } from "effect/reactivity";
 import { planPinnedReorder } from "@t3tools/client-runtime/state/thread-sort";
 import {
@@ -26,6 +33,8 @@ import type { SidebarThreadSummary, Thread } from "../types";
 import { cn, normalizeSearchText } from "../lib/utils";
 import { isLatestRunSettled } from "../session-logic";
 import { resolveServerBackedAppStageLabel } from "../branding.logic";
+import { formatUpcomingTimestamp } from "../timestampFormat";
+import { snoozeWakeDescription } from "./Sidebar.snooze";
 
 export function shouldNavigateAfterThreadPark(input: {
   readonly threadKey: string;
@@ -1036,6 +1045,145 @@ export function resolveSidebarV2TopStatus(input: {
     return "woke";
   }
   return input.isUnread ? "done" : null;
+}
+
+export type SidebarCompactStateKind =
+  | "needs-you"
+  | "snoozed"
+  | "working"
+  | "waiting"
+  | "limited"
+  | "failed"
+  | "woke"
+  | "done";
+
+/**
+ * Line three of a compact row: a state word and its cause. Every part is read from app
+ * state (run status, pending requests and background work, pull request watches, snooze,
+ * unread), never from text an agent writes, so it cannot drift from what the thread is doing.
+ * Working rows add their live duration when drawn.
+ */
+export interface SidebarCompactRowState {
+  readonly kind: SidebarCompactStateKind;
+  readonly word: string;
+  readonly cause: string | null;
+  /** The pull request the thread waits on, with its passing gate tally when one was read. */
+  readonly watchedPullRequest: {
+    readonly number: number;
+    readonly url: string;
+    readonly checks: { readonly passed: number; readonly total: number } | null;
+  } | null;
+}
+
+const BACKGROUND_WORK_NOUNS = {
+  subagent: ["subagent", "subagents"],
+  monitor: ["monitor", "monitors"],
+  background_task: ["background task", "background tasks"],
+} as const;
+
+function describeBackgroundWork(
+  tasks: SidebarThreadSummary["pendingBackgroundTasks"],
+): string | null {
+  const counts = new Map<keyof typeof BACKGROUND_WORK_NOUNS, number>();
+  for (const task of tasks) {
+    // Watches are named by their pull request; left-running commands do not hold the thread.
+    if (isPullRequestWatchTask(task) || !(task.kind in BACKGROUND_WORK_NOUNS)) continue;
+    const kind = task.kind as keyof typeof BACKGROUND_WORK_NOUNS;
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  if (counts.size === 0) return null;
+  return Array.from(counts, ([kind, count]) => {
+    const [one, many] = BACKGROUND_WORK_NOUNS[kind];
+    return `${count} ${count === 1 ? one : many}`;
+  }).join(", ");
+}
+
+export function resolveSidebarCompactRowState(input: {
+  readonly thread: Pick<
+    SidebarThreadSummary,
+    "goal" | "pendingBackgroundTasks" | "pullRequests" | "runtime"
+  >;
+  readonly status: SidebarThreadStatus;
+  readonly isUnread: boolean;
+  readonly isWoke: boolean;
+  /** Set only for rows in the snoozed shelf. */
+  readonly snoozedUntil: string | null;
+  readonly now: Date;
+  readonly timestampFormat: TimestampFormat;
+}): SidebarCompactRowState | null {
+  const state = (
+    kind: SidebarCompactStateKind,
+    word: string,
+    cause: string | null = null,
+  ): SidebarCompactRowState => ({ kind, word, cause, watchedPullRequest: null });
+  const { thread, status } = input;
+  if (status === "approval") return state("needs-you", "Needs you", "approval");
+  if (status === "input") return state("needs-you", "Needs you", "question");
+  if (input.snoozedUntil !== null) {
+    const until = snoozeWakeDescription(input.snoozedUntil, input.now, input.timestampFormat);
+    return state("snoozed", "Snoozed", until === "" ? null : `until ${until}`);
+  }
+  if (status === "working") {
+    return state("working", thread.goal?.status === "active" ? "Goal" : "Working");
+  }
+  if (status === "waiting") {
+    const watched = thread.pullRequests.find(
+      (link) => link.watch !== undefined && link.source !== "stack-dismissed",
+    );
+    if (watched?.watch !== undefined) {
+      return {
+        kind: "waiting",
+        // Once the gate has passed the watch only listens for comments and conflicts.
+        word: watched.watch.passed ? "Waiting" : "Waiting on CI",
+        cause: null,
+        watchedPullRequest: {
+          number: watched.number,
+          url: watched.url,
+          checks: watched.watch.gateChecks ?? null,
+        },
+      };
+    }
+    return state("waiting", "Waiting", describeBackgroundWork(thread.pendingBackgroundTasks));
+  }
+  if (status === "limited") {
+    const resetAt = thread.runtime?.usageLimitResetAt ?? null;
+    const resets =
+      resetAt === null
+        ? ""
+        : formatUpcomingTimestamp(resetAt, input.timestampFormat, input.now.getTime());
+    return state("limited", "Limited", resets === "" ? null : `resets ${resets}`);
+  }
+  if (status === "failed") return state("failed", "Failed");
+  if (input.isWoke) return state("woke", "Woke");
+  return input.isUnread ? state("done", "Done") : null;
+}
+
+/**
+ * Who launched whom among the listed threads, keyed by `environmentId:threadId`: the
+ * launcher's title for each launched thread, and how many threads each launcher started.
+ */
+export function buildSidebarLaunchIndex(
+  threads: ReadonlyArray<
+    Pick<SidebarThreadSummary, "environmentId" | "id" | "title" | "launchedByThreadId">
+  >,
+): {
+  readonly launcherTitleByKey: ReadonlyMap<string, string>;
+  readonly launchedCountByKey: ReadonlyMap<string, number>;
+} {
+  const titleByKey = new Map(
+    threads.map((thread) => [`${thread.environmentId}:${thread.id}`, thread.title]),
+  );
+  const launcherTitleByKey = new Map<string, string>();
+  const launchedCountByKey = new Map<string, number>();
+  for (const thread of threads) {
+    if (thread.launchedByThreadId == null) continue;
+    const launcherKey = `${thread.environmentId}:${thread.launchedByThreadId}`;
+    const launcherTitle = titleByKey.get(launcherKey);
+    if (launcherTitle === undefined) continue;
+    launcherTitleByKey.set(`${thread.environmentId}:${thread.id}`, launcherTitle);
+    launchedCountByKey.set(launcherKey, (launchedCountByKey.get(launcherKey) ?? 0) + 1);
+  }
+  return { launcherTitleByKey, launchedCountByKey };
 }
 
 export function shouldShowSidebarV2Duration(status: SidebarThreadStatus): boolean {
